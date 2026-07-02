@@ -1,0 +1,49 @@
+name: Nightly DB backup
+
+# Dumps the whole Supabase Postgres database every night and keeps the
+# compressed dump as a downloadable, off-site GitHub artifact.
+#
+# One-time setup (see SETUP-PHASE4.md):
+#   1. This repo must live on GitHub.
+#   2. Supabase → Project Settings → Database → Connection string → URI
+#      (use the "Direct connection", port 5432). Append ?sslmode=require.
+#   3. GitHub → repo → Settings → Secrets and variables → Actions → New secret:
+#         name:  SUPABASE_DB_URL
+#         value: postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres?sslmode=require
+
+on:
+  schedule:
+    - cron: "0 3 * * *"     # 03:00 UTC daily
+  workflow_dispatch: {}      # also run on demand from the Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Postgres 17 client
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — see SETUP-PHASE4.md"
+            exit 1
+          fi
+          ts=$(date -u +%Y%m%d-%H%M)
+          pg_dump "$SUPABASE_DB_URL" \
+            --no-owner --no-privileges \
+            | gzip > "spottysearch-$ts.sql.gz"
+          ls -lh spottysearch-*.sql.gz
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spottysearch-db-backup
+          path: spottysearch-*.sql.gz
+          retention-days: 30

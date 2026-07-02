@@ -1,0 +1,49 @@
+/* SpottySearch service worker — caches the app shell so the app opens offline.
+   Data still needs a connection (the offline entry queue lives in IndexedDB). */
+
+const CACHE = "spotty-shell-v6";
+const SHELL = [
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./config.js",
+  "./search.html",
+  "./search.js",
+  "./admin.html",
+  "./admin.js",
+  "./manifest.webmanifest",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+];
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+// App shell: NETWORK-FIRST so redeploys show up immediately; the cache is
+// only the offline fallback. Everything else (Supabase, CDN): untouched.
+self.addEventListener("fetch", (e) => {
+  const url = new URL(e.request.url);
+  if (url.origin === location.origin) {
+    e.respondWith(
+      fetch(e.request)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+  }
+});

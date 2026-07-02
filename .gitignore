@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Supabase local CLI state (machine-specific)
+supabase/.temp/
+
+# Local backups
+*.sql.gz

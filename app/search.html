@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2ab3ac" />
+  <title>SpottySearch — Find a piece</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand"><span class="spot spot-blue"></span><span class="spot spot-red"></span> SpottySearch</span>
+    <nav class="topnav">
+      <a href="index.html">Log</a>
+      <a href="admin.html" id="admin-link" class="hidden">Admin</a>
+      <button id="logout-btn" class="link-btn">Log out</button>
+    </nav>
+  </header>
+
+  <main id="search-view" class="view hidden">
+    <h1>Find a piece</h1>
+
+    <form id="search-form">
+      <label>Description <span class="optional">(optional)</span>
+        <input type="text" id="query-input" autocomplete="off" maxlength="200"
+               placeholder="e.g. white mug with a green caterpillar" />
+      </label>
+
+      <label>Customer name <span class="optional">(optional)</span>
+        <input type="text" id="name-input" autocomplete="off" autocapitalize="words" maxlength="80"
+               placeholder="e.g. Sarah" />
+      </label>
+
+      <div class="filter-row">
+        <select id="date-range" aria-label="Date painted">
+          <option value="0" selected>Painted today</option>
+          <option value="3">Last 3 days</option>
+          <option value="7">Last week</option>
+          <option value="31">Last month</option>
+          <option value="all">Any date</option>
+        </select>
+        <select id="status-filter" aria-label="Status">
+          <option value="not_collected" selected>Not collected</option>
+          <option value="awaiting">Waiting for kiln</option>
+          <option value="ready">Ready to collect</option>
+          <option value="collected">Collected</option>
+          <option value="any">Any status</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="search-btn">Search</button>
+      <p id="search-msg" role="status"></p>
+    </form>
+
+    <ul id="results" class="result-grid"></ul>
+  </main>
+
+  <!-- Piece actions -->
+  <dialog id="confirm-dialog">
+    <img id="confirm-photo" alt="Selected pottery" />
+    <p id="confirm-text"></p>
+    <div class="dialog-btns">
+      <button class="btn" id="confirm-cancel">Back</button>
+      <button class="btn btn-fired" id="confirm-fired">Fired ✓ ready</button>
+      <button class="btn btn-primary" id="confirm-collect">Collected ✓</button>
+    </div>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="search.js"></script>
+</body>
+</html>

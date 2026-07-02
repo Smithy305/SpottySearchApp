@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2ab3ac" />
+  <title>SpottySearch — Owner dashboard</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand"><span class="spot spot-blue"></span><span class="spot spot-red"></span> SpottySearch</span>
+    <nav class="topnav">
+      <a href="index.html">Log</a>
+      <a href="search.html">Search</a>
+      <button id="logout-btn" class="link-btn">Log out</button>
+    </nav>
+  </header>
+
+  <!-- Not-an-admin fallback -->
+  <main id="denied-view" class="view hidden">
+    <h1>Owner dashboard</h1>
+    <p class="muted">This page is for the shop owner. If that's you, ask to have your
+      account set to <strong>admin</strong>.</p>
+    <p><a href="index.html">← Back to logging</a></p>
+  </main>
+
+  <main id="admin-view" class="view hidden">
+    <h1>Owner dashboard</h1>
+    <p id="admin-msg" class="muted" role="status">Loading…</p>
+
+    <!-- Per-shop stat cards -->
+    <section id="shop-stats"></section>
+
+    <!-- Search usage -->
+    <section id="search-stats" class="hidden">
+      <h2>Search</h2>
+      <div class="kpi-grid" id="search-kpis"></div>
+    </section>
+
+    <!-- 30-day trend -->
+    <section id="trend-section" class="hidden">
+      <h2>Pieces logged — last 30 days</h2>
+      <div class="chart-wrap"><canvas id="trend-chart" height="180"></canvas></div>
+    </section>
+
+    <!-- Chase-up list -->
+    <section id="stale-section">
+      <h2>Needs chasing <span id="stale-count" class="count-pill"></span></h2>
+      <p id="stale-sub" class="muted"></p>
+      <ul id="stale-list" class="piece-list"></ul>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

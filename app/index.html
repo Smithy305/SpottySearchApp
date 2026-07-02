@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2ab3ac" />
+  <title>SpottySearch — Log a piece</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand"><span class="spot spot-blue"></span><span class="spot spot-red"></span> SpottySearch</span>
+    <nav class="topnav">
+      <a href="search.html" id="search-link" class="hidden">Search</a>
+      <a href="admin.html" id="admin-link" class="hidden">Admin</a>
+      <button id="logout-btn" class="link-btn hidden">Log out</button>
+    </nav>
+  </header>
+
+  <!-- Login view -->
+  <main id="login-view" class="view hidden">
+    <h1 id="auth-title">Worker login</h1>
+    <form id="login-form">
+      <label>Email
+        <input type="email" id="login-email" autocomplete="username" required />
+      </label>
+      <label>Password
+        <input type="password" id="login-password" autocomplete="current-password" required minlength="8" />
+      </label>
+
+      <!-- Registration-only fields -->
+      <div id="register-fields" class="hidden">
+        <label>Your name
+          <input type="text" id="register-name" autocomplete="name" autocapitalize="words" maxlength="60" placeholder="Shown on entries you log" />
+        </label>
+        <label>Shop code
+          <input type="text" id="register-code" autocomplete="off" autocapitalize="characters" maxlength="6" placeholder="6 characters — ask the owner" />
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="login-btn">Log in</button>
+      <p id="login-error" class="error" role="alert"></p>
+      <p class="muted center">
+        <button type="button" id="auth-toggle" class="link-btn link-inline">New worker? Register here</button>
+      </p>
+    </form>
+  </main>
+
+  <!-- Logging view -->
+  <main id="log-view" class="view hidden">
+    <p id="welcome" class="muted"></p>
+
+    <form id="piece-form">
+      <!-- Photo capture -->
+      <input type="file" id="photo-input" accept="image/*" capture="environment" hidden />
+      <button type="button" id="photo-btn" class="photo-drop">
+        <span id="photo-placeholder">📷 Tap to take photo<br /><small>Fill the frame with the pottery</small></span>
+        <img id="photo-preview" class="hidden" alt="Pottery preview" />
+      </button>
+
+      <label>Customer name
+        <input type="text" id="customer-name" autocomplete="off" autocapitalize="words" required maxlength="80" placeholder="e.g. Sarah W" />
+      </label>
+
+      <label>Number of items</label>
+      <div class="stepper">
+        <button type="button" class="btn step-btn" id="count-minus" aria-label="Fewer items">−</button>
+        <output id="count-value">1</output>
+        <button type="button" class="btn step-btn" id="count-plus" aria-label="More items">+</button>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="save-btn" disabled>Save piece</button>
+      <p id="form-msg" role="status"></p>
+    </form>
+
+    <section>
+      <h2>Today’s pieces <span id="today-count" class="count-pill"></span></h2>
+      <p id="queue-note" class="muted hidden"></p>
+      <ul id="today-list" class="piece-list"></ul>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
