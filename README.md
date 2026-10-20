@@ -1,79 +1,119 @@
 # SpottySearch
- 
-Find a piece of pottery by describing it. A small multimodal search tool for a paint-your-own pottery café.
- 
-## Background
- 
-Spotty Pots is a family-run paint-your-own pottery café. When a customer paints a piece, a staff member photographs it before it is glazed and fired, and posts the photo to a WhatsApp group labelled with the customer's name. When the customer returns to collect the finished piece, the photo is used to find it.
- 
-That lookup falls apart when the name is forgotten or misspelt, or the photo has scrolled out of reach. SpottySearch lets staff find a piece by describing it instead, for example "a white mug with a caterpillar", and returns the closest matches.
- 
-## How it works
- 
-Two complementary retrieval routes run over the same set of photos.
- 
-**Image search (CLIP).** Every photo is encoded with CLIP (ViT-B/32) into an embedding. A text query is encoded by the same model and ranked against the image embeddings by cosine similarity. This route is strongest on overall colour, shape and style.
- 
-**Caption search (VLM + text embeddings).** Every photo is described by a vision-language model (Qwen2.5-VL-3B-Instruct), which lists each item and its colour, form and any patterns. Those captions are embedded with a sentence model (all-MiniLM-L6-v2) and searched the same way. This route is strongest on specific painted text and named designs.
- 
-The two routes are independent and evaluated separately. CLIP is a contrastive, discriminative model; the captioning step is generative, which is what produces the searchable descriptions.
- 
-## Features
- 
-- Natural-language search over pottery photos, returning the top matches with each image and its description.
-- Runs entirely locally on Apple Silicon (MPS), so no data leaves the machine and there are no API costs.
-- Generated captions cope with multi-item photos and read painted text on the pottery.
-- Caption generation is cached and resumable, so an interrupted run picks up where it left off.
-## Tech stack
- 
-Python, PyTorch, OpenAI CLIP, Qwen2.5-VL via Hugging Face Transformers and qwen-vl-utils, sentence-transformers, NumPy, Pillow, matplotlib, Tkinter (annotation tool).
- 
-## Setup
- 
-Python 3.11 or 3.12 is recommended.
- 
-```bash
-pip install torch pillow numpy matplotlib
-pip install git+https://github.com/openai/CLIP.git
-pip install transformers qwen-vl-utils accelerate
-pip install sentence-transformers
-```
- 
-Qwen2.5-VL needs a recent version of Transformers, so update it if the model fails to load.
- 
-## Usage
- 
-The pipeline is driven from three Jupyter notebooks, each covering a distinct stage, plus a small annotation tool:
 
-- **`label_images.py`** — a Tkinter GUI for annotating photos with written descriptions, used to build the evaluation set.
-- **`clip_search.ipynb`** — builds the CLIP image index and runs image-similarity search.
-- **`ccaption_search.ipynb`** — generates a caption per photo with Qwen2.5-VL (cached to `captions.json`), builds the caption index, and runs caption-based search.
-- **`evaluate.ipynb`** — compares both routes on the labelled queries and reports recall and MRR.
-## Data
- 
-43 sample photos are included in the `Data/` folder.
- 
-## Evaluation
- 
-Each of 20 hand-labelled photos provides a search query (its written description), with that same photo as the correct result. Both methods rank all 43 photos for every query, and I report recall@k and mean reciprocal rank (MRR) over the labelled queries.
- 
+**Find a customer's pottery by describing it.** A production logging and retrieval app for a paint-your-own pottery café, built on vision-language captioning, vector search and Postgres row-level security.
+
+Live at [spottysearch.co.uk](https://spottysearch.co.uk) (staff login required), in use at Spotty Pots.
+
+---
+
+## The problem
+
+At a paint-your-own pottery café, every painted piece is photographed before it goes into the kiln and collected days or weeks later. Until now that meant posting each photo to a staff WhatsApp group with the customer's name. When a customer came back, someone scrolled through hundreds of photos looking for "Sarah, the blue bowl with turtles". If the name was misspelt, forgotten or buried weeks back, the search failed.
+
+SpottySearch replaces that with two things:
+
+1. **A logging app** on staff phones: photo, customer name, item count, optional notes.
+2. **A search page** at the counter: type what the customer describes (*"white mug with a caterpillar"*) and get the matching photos ranked, then mark the piece collected in one tap.
+
+Around those sit the things a real shop needed: automatic "your pottery is ready" emails, an owner dashboard, chase-up emails for uncollected pieces, per-shop data isolation and GDPR anonymisation.
+
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph Staff["Staff phones (PWA)"]
+        L[Log piece<br/>photo + name + notes]
+        S[Search<br/>"blue bowl, turtles"]
+    end
+
+    subgraph SB["Supabase"]
+        ST[(Storage<br/>private bucket)]
+        DB[(Postgres + pgvector<br/>RLS per shop)]
+        CP[caption-piece]
+        SP[search-pieces]
+        ES[enrich-square]
+        NR[notify-ready]
+    end
+
+    L -->|upload, resized client-side| ST
+    L --> DB
+    DB -->|insert webhook| CP
+    CP -->|Claude Haiku caption| CP
+    CP -->|gte-small embedding| DB
+    S --> SP -->|embed query, match_pieces RPC| DB
+    ES -->|nightly: Square payments → contact| DB
+    NR -->|daily: branded email via Resend| C[Customer inbox]
+```
+
+- **Upload:** the PWA resizes the photo to 1280px on the phone, uploads it to a private bucket and inserts a row. It queues in IndexedDB if the shop's signal drops.
+- **Caption:** a database webhook triggers an edge function. Claude Haiku describes every item in the photo (colour, form, painted patterns, any text) and is told to ignore background clutter. The caption, plus any staff notes, is embedded with `gte-small` (384-d) and stored in pgvector.
+- **Search:** the query is embedded the same way and ranked by cosine similarity in a `match_pieces` RPC (HNSW index). A keyword hit on staff notes adds a small score boost, so pieces can be found by notes alone. The RPC runs as the caller, so RLS scopes results to their shop automatically.
+- **Learning loop:** each time a searched-for piece is confirmed, the query, the chosen piece and its rank are logged as labelled data for future evaluation and fine-tuning.
+
+## Why captions, not CLIP
+
+Before building anything I ran an offline comparison on real shop photos (the notebooks in this repo). There were 20 hand-labelled queries over a pool of 43 photos, and each method ranked every photo for every query.
+
 | Method | recall@1 | recall@3 | recall@5 | MRR | Median rank |
 | --- | --- | --- | --- | --- | --- |
-| CLIP (image) | 0.45 | 0.65 | 0.70 | 0.60 | 2 |
-| Caption (Qwen + text) | 0.60 | 0.80 | 0.80 | 0.71 | 1 |
- 
-Caption search is the stronger route on this set, returning the correct pot first 60% of the time and within the top three 80% of the time, for a median rank of 1. CLIP holds its own on pots described by overall colour and shape, but is weaker when a query leans on painted text or names, which the captioning model transcribes and the text search can match directly.
- 
-The caption route's main failure mode is cluttered photos. When a scene contains background objects, such as other items on the table or shelves, the 3B vision-language model sometimes describes those as pottery too, which pollutes the caption and pushes the correct match down the ranking. One such photo fell to rank 26. Cropping or segmenting the piece before captioning, or prompting the model to ignore the background, is the obvious mitigation.
- 
-These figures come from only 20 queries, so they are indicative rather than precise: a single pot moving in or out of the top three shifts recall@3 by five points.
- 
-## Roadmap
- 
-- Reduce background clutter in captions by cropping or segmenting the piece before captioning, the main cause of poor matches in the evaluation.
-- Hybrid caption search (BM25 plus embeddings) to catch exact terms such as names painted on a piece.
-- Score fusion across the image and caption routes.
-- A simple web app to replace the WhatsApp workflow, with a proper record per piece and search built in.
-## Status
- 
-Personal prototype and work in progress.
+| CLIP ViT-B/32 (image ↔ text) | 0.45 | 0.65 | 0.70 | 0.60 | 2 |
+| **VLM caption → text embedding** | **0.60** | **0.80** | **0.80** | **0.71** | **1** |
+
+CLIP did well on overall colour and shape but struggled when a query relied on painted text or named designs. Those are exactly what customers remember ("it says *Grandma* on it"). The caption route turns those into searchable words. Its main failure mode was clutter: the 3B local VLM sometimes described background objects as pottery, and one photo dropped to rank 26. That finding went straight into the production prompt as an explicit ignore-the-background instruction.
+
+Caption search also needs no GPU at query time. Captioning happens once, asynchronously at upload, through a vision API, and search is text against text. So the production system dropped CLIP and swapped local Qwen2.5-VL for a hosted model. With only 20 queries these numbers are indicative, not precise.
+
+## Engineering highlights
+
+- **Multi-tenant security in the database, not the app.** Every table and the storage bucket use row-level security keyed on `my_shop_id()`. Owners get read access across their shops through a separate policy, and admin RPCs refuse non-admins. [`supabase/test_rls.sql`](supabase/test_rls.sql) seeds two shops, two workers and one owner, impersonates each through JWT claims and asserts the isolation, all inside a rolled-back transaction.
+- **Square enrichment without guessing.** A nightly job matches customer names against Square payments within a ±1-day window, falling back to first-name and containment matching. It only accepts a single unambiguous match: two Sarahs on the same day means no match. Contact capture at the till is incomplete (around half of payments on a sample day), so enrichment is best-effort and never blocks anything.
+- **Idempotent notifications.** `notified_at` is written *before* the email is sent, so a retried cron run can't email a customer twice. Ready emails are time-based (14 days after logging) because the shop's real workflow didn't reliably include marking pieces as fired.
+- **Offline-tolerant PWA.** It's vanilla JS with no build step. It installs to the home screen, uses a network-first service worker and keeps an IndexedDB queue for uploads made with no signal.
+- **Editing that keeps search in sync.** Editing a piece's notes re-embeds caption plus notes server-side, and status edits keep the ready/collected timestamps consistent.
+- **Operations.** There's a role-gated owner dashboard (per-shop KPIs, 30-day activity, search top-3 hit rate, an overdue-pieces list with one-click chaser emails), worker self-registration through per-shop join codes, password reset, a nightly `pg_dump` backup through GitHub Actions, and a pg_cron job that anonymises collected pieces after 6 months while keeping the photo and caption for training data.
+
+## Tech stack
+
+| Layer | Tools |
+| --- | --- |
+| Front end | Vanilla JS PWA, service worker, IndexedDB, Chart.js |
+| Backend | Supabase: Postgres 17, pgvector (HNSW), RLS, Storage, Auth, pg_cron |
+| Edge functions | Deno / TypeScript: `caption-piece`, `search-pieces`, `update-piece`, `enrich-square`, `notify-ready`, `send-chaser` |
+| ML | Claude Haiku 4.5 (captioning), gte-small embeddings; offline eval with CLIP, Qwen2.5-VL-3B, all-MiniLM-L6-v2 |
+| Integrations | Square Payments and Customers API, Resend (email) |
+| Hosting / ops | Netlify, GitHub Actions |
+
+## Repository layout
+
+```
+app/                    PWA: logging (index), search, admin dashboard, edit dialog, password reset
+supabase/
+  schema.sql            core schema, RLS, storage policies
+  phase2…7.sql          migrations: search RPC, Square fields, owner/admin, chasers, notes
+  test_rls.sql          tenant-isolation test suite
+  functions/            edge functions (one folder each)
+.github/workflows/      nightly database backup
+evaluation.ipynb        CLIP vs caption retrieval comparison
+clip_search.ipynb       CLIP image-index prototype
+caption_search.ipynb    Qwen2.5-VL caption prototype
+label_images.py         Tkinter tool used to build the labelled eval set
+labels.json             hand-written query descriptions for the eval
+captions.json           cached prototype captions
+PLAN.md, SETUP*.md      build plan and phase-by-phase deployment guides
+```
+
+The prototype photos aren't included because they show real customers' work.
+
+## Running it yourself
+
+Each phase has a step-by-step deployment guide: start with [`SETUP.md`](SETUP.md), then `SETUP-PHASE2.md` to `SETUP-PHASE7.md`. You'll need a Supabase project, and for the full feature set an Anthropic API key, a Resend account and optionally a Square developer token. The app itself is static files: point `app/config.js` at your Supabase project and serve the `app/` folder.
+
+## What's next
+
+- Use the logged search confirmations to re-run the eval on real production queries instead of 20 hand-written ones.
+- Hybrid ranking (BM25 plus embeddings) for exact-term queries.
+- Crop or segment the piece before captioning to remove the remaining background noise.
+
+---
+
+Built by [Joe Smith](https://joe-smith-computer-vision.com) · [LinkedIn](https://linkedin.com/in/joe-smith-phd-08039b190)
