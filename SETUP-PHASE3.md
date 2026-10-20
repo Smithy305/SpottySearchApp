@@ -4,8 +4,9 @@ Prerequisite: Phase 2 live. About 45 minutes, mostly account setup.
 
 How it works once live: every night, `enrich-square` matches each piece's
 customer name against Square payments from the painting day and attaches the
-email/phone the customer left at the till. When a worker taps **Fired ✓ ready**,
-`notify-ready` emails the customer their photo and "ready to collect". One
+email/phone the customer left at the till. Each morning, `notify-ready` emails
+every customer whose piece was photographed **2 weeks ago or more** (and isn't
+collected) that it's ready — no need for anyone to mark it fired first. One
 email per piece, ever (`notified_at`).
 
 ## 1. Square access token (NOT the till login)
@@ -52,14 +53,11 @@ supabase functions deploy notify-ready --no-verify-jwt
 
 ## 6. Triggers
 
-**Instant email when marked fired** — Database → Webhooks → Create:
-- Name `notify-on-update`, table `pieces`, event **Update** only
-- Type: Supabase Edge Function → `notify-ready`
-- Header `x-caption-secret` = your CAPTION_SECRET
+Dashboard → Integrations → **Cron** (enable it) → two jobs, type "Supabase Edge Function", each with an `x-caption-secret` header set to your CAPTION_SECRET:
+- `enrich-square` at `0 2 * * *` (2:00 am — attach contacts overnight)
+- `notify-ready` at `0 10 * * *` (10:00 am — emails land mid-morning, not at 2 am)
 
-**Nightly catch-up** — Dashboard → Integrations → **Cron** (enable it) → two jobs, type "Supabase Edge Function", with the same `x-caption-secret` header:
-- `enrich-square` at `0 2 * * *` (2:00 am)
-- `notify-ready` at `10 2 * * *` (2:10 am — mops up pieces whose contact arrived after firing)
+(If you previously created the `notify-on-update` webhook on the `pieces` table, **delete it** — Database → Webhooks. Emails are now purely timer-based: 2 weeks after the photo, regardless of when a piece is marked fired.)
 
 ## 7. Test end to end
 
@@ -71,7 +69,16 @@ supabase functions deploy notify-ready --no-verify-jwt
      -H "x-caption-secret: YOUR_CAPTION_SECRET" -d '{}'
    ```
    Check Table Editor → pieces: your test piece should now have `contact_email`.
-4. On the search page, find the piece → **Fired ✓ ready** → the email should arrive within seconds, photo included.
+4. Emails only go out for pieces photographed 2+ weeks ago, so to test without waiting, temporarily backdate the piece:
+   ```sql
+   update pieces set created_at = now() - interval '15 days' where id = '<piece-id>';
+   ```
+   then run notify-ready by hand:
+   ```bash
+   curl -X POST "https://nlqwchmezqefygecayfm.supabase.co/functions/v1/notify-ready" \
+     -H "x-caption-secret: YOUR_CAPTION_SECRET" -d '{}'
+   ```
+   The email should arrive within seconds.
 
 ## Expectations & troubleshooting
 
