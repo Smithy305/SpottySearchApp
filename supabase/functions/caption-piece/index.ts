@@ -26,6 +26,12 @@ const BUCKET = "pottery-photos";
 
 const embedder = new Supabase.ai.Session("gte-small");
 
+// What gets embedded for search: the caption plus any worker note (Phase 7).
+// Must match update-piece/index.ts exactly.
+function embedText(caption: string, notes: string | null) {
+  return notes ? `${caption}\nNotes: ${notes}` : caption;
+}
+
 Deno.serve(async (req) => {
   if (req.headers.get("x-caption-secret") !== Deno.env.get("CAPTION_SECRET")) {
     return json({ error: "unauthorised" }, 401);
@@ -41,7 +47,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const pieceId = body?.record?.id ?? body?.piece_id ?? null;
 
-  let query = db.from("pieces").select("id, photo_path").is("caption", null);
+  let query = db.from("pieces").select("id, photo_path, notes").is("caption", null);
   query = pieceId ? query.eq("id", pieceId) : query.limit(10);
   const { data: pieces, error } = await query;
   if (error) return json({ error: error.message }, 500);
@@ -50,7 +56,7 @@ Deno.serve(async (req) => {
   for (const piece of pieces ?? []) {
     try {
       const caption = await captionPhoto(db, piece.photo_path);
-      const embedding = await embedder.run(caption, {
+      const embedding = await embedder.run(embedText(caption, piece.notes), {
         mean_pool: true,
         normalize: true,
       });
