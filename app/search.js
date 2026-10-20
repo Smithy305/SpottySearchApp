@@ -1,7 +1,7 @@
 /* SpottySearch — search page (Phase 2)
    Search by description and/or customer name and/or date.
    Lifecycle: awaiting (painted) → ready (fired) → collected. */
-/* global supabase, SPOTTY_CONFIG */
+/* global supabase, SPOTTY_CONFIG, SpottyEdit */
 
 "use strict";
 
@@ -26,7 +26,8 @@ async function init() {
     location.href = "index.html"; // log in there first
     return;
   }
-  const { data } = await sb.from("profiles").select("*").single();
+  // Filter to our own row: workers can now read colleagues' profiles too.
+  const { data } = await sb.from("profiles").select("*").eq("user_id", session.user.id).single();
   profile = data;
   if (profile?.role === "admin") $("admin-link").classList.remove("hidden");
   $("search-view").classList.remove("hidden");
@@ -45,20 +46,23 @@ $("search-form").addEventListener("submit", async (e) => {
   $("search-btn").disabled = true;
   setMsg("Searching…");
 
-  const days = $("date-range").value;
+  // Start/end dates, both optional: blank = no limit on that side.
+  // "to" is inclusive of the chosen day, so send the start of the NEXT day.
+  const fromVal = $("date-from").value; // "YYYY-MM-DD" or ""
+  const toVal = $("date-to").value;
   const body = {
     query: lastQuery,
     name: $("name-input").value.trim(),
     status: $("status-filter").value,
-    to: new Date(Date.now() + 86400000).toISOString(),
+    from: fromVal ? new Date(fromVal + "T00:00:00").toISOString() : new Date(0).toISOString(),
+    to: toVal
+      ? new Date(new Date(toVal + "T00:00:00").getTime() + 86400000).toISOString()
+      : new Date(Date.now() + 86400000).toISOString(),
   };
-  if (days === "all") {
-    body.from = new Date(0).toISOString();
-  } else {
-    const from = new Date();
-    from.setHours(0, 0, 0, 0);
-    from.setDate(from.getDate() - Number(days));
-    body.from = from.toISOString();
+  if (fromVal && toVal && fromVal > toVal) {
+    setMsg("Start date is after end date — check the dates.", "err");
+    $("search-btn").disabled = false;
+    return;
   }
 
   try {
@@ -83,65 +87,106 @@ function renderResults(results) {
   const list = $("results");
   list.replaceChildren();
 
-  for (const r of results) {
-    const li = document.createElement("li");
-    li.className = "result-card status-" + r.status;
-    li.tabIndex = 0;
-    li.setAttribute("role", "button");
+  for (const r of results) list.append(makeCard(r));
+}
 
-    const img = document.createElement("img");
-    img.loading = "lazy";
-    img.alt = `Pottery for ${r.customer_name}`;
-    if (r.photo_url) img.src = r.photo_url;
+// One result card. Rebuilt in place after an edit.
+function makeCard(r) {
+  const li = document.createElement("li");
+  li.className = "result-card status-" + r.status;
+  li.tabIndex = 0;
+  li.setAttribute("role", "button");
 
-    const info = document.createElement("div");
-    info.className = "card-info";
+  const img = document.createElement("img");
+  img.loading = "lazy";
+  img.alt = `Pottery for ${r.customer_name}`;
+  if (r.photo_url) img.src = r.photo_url;
 
-    const who = document.createElement("div");
-    who.className = "who";
-    who.textContent = r.customer_name;
+  const info = document.createElement("div");
+  info.className = "card-info";
 
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    const date = new Date(r.created_at).toLocaleDateString([], { day: "numeric", month: "short" });
-    const sim = typeof r.similarity === "number" ? ` · ${Math.round(r.similarity * 100)}%` : "";
-    meta.textContent = `#${r.rank}${sim} · ${r.item_count} item${r.item_count > 1 ? "s" : ""} · ${date}`;
+  const who = document.createElement("div");
+  who.className = "who";
+  who.textContent = r.customer_name;
 
-    const chip = document.createElement("span");
-    chip.className = "status-chip chip-" + r.status;
-    chip.textContent = STATUS_LABEL[r.status] ?? r.status;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  const date = new Date(r.created_at).toLocaleDateString([], { day: "numeric", month: "short" });
+  // 0 = found by its notes only (no caption yet) — no % to show.
+  const sim = typeof r.similarity === "number" && r.similarity > 0 ? ` · ${Math.round(r.similarity * 100)}%` : "";
+  const logger = r.logged_by ? ` · by ${r.logged_by}` : "";
+  meta.textContent = `#${r.rank}${sim} · ${r.item_count} item${r.item_count > 1 ? "s" : ""} · ${date}${logger}`;
 
-    info.append(who, meta, chip);
-    li.append(img, info);
+  const chip = document.createElement("span");
+  chip.className = "status-chip chip-" + r.status;
+  chip.textContent = chipText(r.status, r);
 
-    const pick = () => openActions(r, li);
-    li.addEventListener("click", pick);
-    li.addEventListener("keydown", (e) => { if (e.key === "Enter") pick(); });
-
-    list.append(li);
+  info.append(who, meta, chip);
+  if (r.notes) {
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = r.notes;
+    info.append(note);
   }
+  li.append(img, info);
+
+  const pick = () => openActions(r, li);
+  li.addEventListener("click", pick);
+  li.addEventListener("keydown", (e) => { if (e.key === "Enter") pick(); });
+
+  return li;
 }
 
 // ---------- piece actions ----------
 function openActions(r, card) {
-  if (r.status === "collected") return;
-  selected = { ...r, card };
+  selected = { ...r, card, data: r };
   $("confirm-photo").src = r.photo_url || "";
   $("confirm-text").textContent =
     `${r.customer_name} — ${r.item_count} item${r.item_count > 1 ? "s" : ""}, currently ${STATUS_LABEL[r.status]}.`;
-  // Fired button only makes sense for pieces still awaiting the kiln.
+  // Fired button only makes sense for pieces still awaiting the kiln;
+  // collected pieces can still be opened, but only to edit them.
   $("confirm-fired").classList.toggle("hidden", r.status !== "awaiting");
+  $("confirm-collect").classList.toggle("hidden", r.status === "collected");
   $("confirm-dialog").showModal();
 }
 
 $("confirm-cancel").addEventListener("click", () => $("confirm-dialog").close());
+
+// Edit details → shared edit dialog (edit.js); refresh the card on save.
+$("confirm-edit").addEventListener("click", () => {
+  const { data: r, card } = selected;
+  $("confirm-dialog").close();
+  SpottyEdit.open(sb, r.id, (p, before) => {
+    // Status changed in the editor → we're the one who fired/handed it over.
+    const me = profile?.display_name ?? null;
+    const updated = {
+      ...r,
+      customer_name: p.customer_name,
+      item_count: p.item_count,
+      notes: p.notes,
+      status: p.status,
+      ready_by_name: p.status === "awaiting" ? null
+        : (p.status === "ready" && before.status === "awaiting") ? me : r.ready_by_name,
+      collected_by_name: p.status === "collected"
+        ? (before.status === "collected" ? r.collected_by_name : me) : null,
+    };
+    card.replaceWith(makeCard(updated));
+    setMsg(`${p.customer_name} — entry updated ✓`, "ok");
+  });
+});
 $("confirm-fired").addEventListener("click", () => applyStatus("ready"));
 $("confirm-collect").addEventListener("click", () => applyStatus("collected"));
 
 async function applyStatus(newStatus) {
   const patch = { status: newStatus };
-  if (newStatus === "ready") patch.ready_at = new Date().toISOString();
-  if (newStatus === "collected") patch.collected_at = new Date().toISOString();
+  if (newStatus === "ready") {
+    patch.ready_at = new Date().toISOString();
+    patch.ready_by = profile.user_id;
+  }
+  if (newStatus === "collected") {
+    patch.collected_at = new Date().toISOString();
+    patch.collected_by = profile.user_id;
+  }
 
   const { error } = await sb.from("pieces").update(patch).eq("id", selected.id);
 
@@ -159,16 +204,31 @@ async function applyStatus(newStatus) {
     }
     setMsg(`${selected.customer_name} — marked ${STATUS_LABEL[newStatus]} ✓`, "ok");
     selected.status = newStatus;
+    selected.data.status = newStatus;
+    if (newStatus === "ready") selected.data.ready_by_name = profile?.display_name;
+    if (newStatus === "collected") selected.data.collected_by_name = profile?.display_name;
     updateCard(selected.card, newStatus);
   }
   $("confirm-dialog").close();
+}
+
+// Chip shows the status plus who did it, e.g. "collected · Meg".
+function chipText(status, r) {
+  const by = status === "ready" ? r.ready_by_name
+    : status === "collected" ? r.collected_by_name
+    : null;
+  return (STATUS_LABEL[status] ?? status) + (by ? ` · ${by}` : "");
 }
 
 function updateCard(card, newStatus) {
   card.className = "result-card status-" + newStatus;
   const chip = card.querySelector(".status-chip");
   chip.className = "status-chip chip-" + newStatus;
-  chip.textContent = STATUS_LABEL[newStatus];
+  // We just did it ourselves, so the name is our own.
+  chip.textContent = chipText(newStatus, {
+    ready_by_name: profile?.display_name,
+    collected_by_name: profile?.display_name,
+  });
 }
 
 init();

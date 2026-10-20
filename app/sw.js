@@ -1,7 +1,7 @@
 /* SpottySearch service worker — caches the app shell so the app opens offline.
    Data still needs a connection (the offline entry queue lives in IndexedDB). */
 
-const CACHE = "spotty-shell-v6";
+const CACHE = "spotty-shell-v13";
 const SHELL = [
   "./",
   "./index.html",
@@ -10,8 +10,11 @@ const SHELL = [
   "./config.js",
   "./search.html",
   "./search.js",
+  "./edit.js",
   "./admin.html",
   "./admin.js",
+  "./reset.html",
+  "./reset.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

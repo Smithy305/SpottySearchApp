@@ -26,6 +26,7 @@
       <label>Description <span class="optional">(optional)</span>
         <input type="text" id="query-input" autocomplete="off" maxlength="200"
                placeholder="e.g. white mug with a green caterpillar" />
+        <small class="muted">Matches the photo and any notes on the entry.</small>
       </label>
 
       <label>Customer name <span class="optional">(optional)</span>
@@ -34,13 +35,15 @@
       </label>
 
       <div class="filter-row">
-        <select id="date-range" aria-label="Date painted">
-          <option value="0" selected>Painted today</option>
-          <option value="3">Last 3 days</option>
-          <option value="7">Last week</option>
-          <option value="31">Last month</option>
-          <option value="all">Any date</option>
-        </select>
+        <label class="date-field">Painted from <span class="optional">(optional)</span>
+          <input type="date" id="date-from" aria-label="Painted on or after" />
+        </label>
+        <label class="date-field">to <span class="optional">(optional)</span>
+          <input type="date" id="date-to" aria-label="Painted on or before" />
+        </label>
+      </div>
+
+      <div class="filter-row">
         <select id="status-filter" aria-label="Status">
           <option value="not_collected" selected>Not collected</option>
           <option value="awaiting">Waiting for kiln</option>
@@ -62,14 +65,16 @@
     <img id="confirm-photo" alt="Selected pottery" />
     <p id="confirm-text"></p>
     <div class="dialog-btns">
-      <button class="btn" id="confirm-cancel">Back</button>
-      <button class="btn btn-fired" id="confirm-fired">Fired ✓ ready</button>
       <button class="btn btn-primary" id="confirm-collect">Collected ✓</button>
+      <button class="btn btn-fired" id="confirm-fired">Fired &amp; ready ✓</button>
+      <button class="btn btn-edit" id="confirm-edit">Edit details ✎</button>
+      <button class="btn" id="confirm-cancel">Back</button>
     </div>
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="edit.js"></script>
   <script src="search.js"></script>
 </body>
 </html>

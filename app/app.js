@@ -1,5 +1,5 @@
 /* SpottySearch worker app — Phase 1 (log a piece: photo + name + count) */
-/* global supabase, SPOTTY_CONFIG */
+/* global supabase, SPOTTY_CONFIG, SpottyEdit */
 
 "use strict";
 
@@ -29,7 +29,14 @@ async function init() {
   if (session) await enterApp();
   else showLogin();
 
-  sb.auth.onAuthStateChange((_event, s) => {
+  sb.auth.onAuthStateChange((event, s) => {
+    // A reset link that fell back to the main page (redirect URL not
+    // allow-listed) would otherwise just log them in without a new password.
+    if (event === "PASSWORD_RECOVERY") {
+      try { sessionStorage.setItem("spotty-recovery", "1"); } catch (_) {}
+      location.replace("reset.html");
+      return;
+    }
     if (!s) showLogin();
   });
 
@@ -60,6 +67,34 @@ $("auth-toggle").addEventListener("click", () => {
   $("register-name").required = registering;
   $("register-code").required = registering;
   $("login-password").autocomplete = registering ? "new-password" : "current-password";
+  $("forgot-row").classList.toggle("hidden", registering); // reset link is a login thing
+});
+
+// ----- Forgot password -----
+// Supabase emails a recovery link that lands on reset.html (must be listed in
+// Auth → URL Configuration → Redirect URLs).
+$("forgot-btn").addEventListener("click", async () => {
+  const email = $("login-email").value.trim();
+  if (!email) {
+    $("login-error").textContent = "Type your email in the box above first, then tap Forgot password.";
+    return;
+  }
+  $("forgot-btn").disabled = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: new URL("reset.html", location.href).href,
+  });
+  $("forgot-btn").disabled = false;
+  if (error) {
+    // Supabase doesn't error for unknown emails, so this is a real failure
+    // (usually the email rate limit, or the mail server not set up).
+    console.error(error);
+    $("login-error").textContent = error.status === 429
+      ? "Too many reset emails just now — wait a minute and try again."
+      : "Couldn't send the reset email right now — try again later or ask the owner.";
+    return;
+  }
+  $("login-error").textContent = "";
+  $("forgot-btn").textContent = "Reset link sent — check your email (and spam) ✓";
 });
 
 $("login-form").addEventListener("submit", async (e) => {
@@ -118,7 +153,9 @@ $("login-form").addEventListener("submit", async (e) => {
 $("logout-btn").addEventListener("click", () => sb.auth.signOut());
 
 async function enterApp() {
-  const { data, error } = await sb.from("profiles").select("*").single();
+  // Filter to our own row: workers can now read colleagues' profiles too.
+  const { data: { user } } = await sb.auth.getUser();
+  const { data, error } = await sb.from("profiles").select("*").eq("user_id", user?.id).single();
   if (error || !data) {
     $("login-error").textContent =
       "Logged in, but no worker profile is set up yet. Ask the admin to add you to a shop.";
@@ -140,17 +177,22 @@ async function enterApp() {
 // ============================================================
 // Photo capture + client-side resize
 // ============================================================
+// Camera (big button) or photo library (link below) both feed the same handler
 $("photo-btn").addEventListener("click", () => $("photo-input").click());
+$("library-btn").addEventListener("click", () => $("library-input").click());
 
-$("photo-input").addEventListener("change", async () => {
-  const file = $("photo-input").files[0];
+$("photo-input").addEventListener("change", (e) => handlePhoto(e.target));
+$("library-input").addEventListener("change", (e) => handlePhoto(e.target));
+
+async function handlePhoto(input) {
+  const file = input.files[0];
   if (!file) return;
   photoBlob = await resizeImage(file);
   $("photo-preview").src = URL.createObjectURL(photoBlob);
   show($("photo-preview"));
   hide($("photo-placeholder"));
   updateSaveState();
-});
+}
 
 function resizeImage(file) {
   return new Promise((resolve, reject) => {
@@ -192,6 +234,7 @@ function updateSaveState() {
 function resetForm() {
   photoBlob = null;
   $("photo-input").value = "";
+  $("library-input").value = "";
   $("piece-form").reset();
   hide($("photo-preview"));
   show($("photo-placeholder"));
@@ -211,6 +254,7 @@ $("piece-form").addEventListener("submit", async (e) => {
     blob: photoBlob,
     customer_name: $("customer-name").value.trim(),
     item_count: itemCount,
+    notes: $("piece-notes").value.trim(),
     created_at: new Date().toISOString(),
   };
 
@@ -245,6 +289,7 @@ async function uploadEntry(entry) {
     photo_path: path,
     customer_name: entry.customer_name,
     item_count: entry.item_count,
+    notes: entry.notes || null, // older queued entries have no notes
   });
   if (insErr) throw insErr;
 }
@@ -319,13 +364,14 @@ async function loadToday() {
 
   const { data: pieces, error } = await sb
     .from("pieces")
-    .select("id, photo_path, customer_name, item_count, created_at")
+    .select("id, photo_path, customer_name, item_count, notes, created_at")
     .gte("created_at", startOfDay.toISOString())
     .order("created_at", { ascending: false });
 
   if (error) return;
 
   $("today-count").textContent = pieces.length;
+  $("today-hint").classList.toggle("hidden", !pieces.length);
 
   // Signed URLs for thumbnails (bucket is private)
   let urls = {};
@@ -340,6 +386,16 @@ async function loadToday() {
   list.replaceChildren();
   for (const p of pieces) {
     const li = document.createElement("li");
+    li.className = "editable";
+    li.tabIndex = 0;
+    li.setAttribute("role", "button");
+    li.setAttribute("aria-label", `Edit entry for ${p.customer_name}`);
+    const edit = () => SpottyEdit.open(sb, p.id, () => {
+      setMsg("Entry updated ✓", "ok");
+      loadToday();
+    });
+    li.addEventListener("click", edit);
+    li.addEventListener("keydown", (e) => { if (e.key === "Enter") edit(); });
 
     const img = document.createElement("img");
     img.loading = "lazy";
@@ -355,8 +411,19 @@ async function loadToday() {
     const time = new Date(p.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     meta.textContent = `${p.item_count} item${p.item_count > 1 ? "s" : ""} · ${time}`;
     info.append(who, meta);
+    if (p.notes) {
+      const note = document.createElement("div");
+      note.className = "note";
+      note.textContent = p.notes;
+      info.append(note);
+    }
 
-    li.append(img, info);
+    const pencil = document.createElement("span");
+    pencil.className = "edit-hint";
+    pencil.setAttribute("aria-hidden", "true");
+    pencil.textContent = "✎";
+
+    li.append(img, info, pencil);
     list.append(li);
   }
 }

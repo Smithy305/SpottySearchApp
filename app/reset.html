@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2ab3ac" />
+  <title>SpottySearch — Reset password</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand"><span class="spot spot-blue"></span><span class="spot spot-red"></span> SpottySearch</span>
+  </header>
+
+  <!-- Arrived via a valid recovery link -->
+  <main id="reset-view" class="view hidden">
+    <h1>Choose a new password</h1>
+    <p id="reset-for" class="muted"></p>
+    <form id="reset-form">
+      <label>New password
+        <input type="password" id="new-password" autocomplete="new-password" required minlength="8"
+               placeholder="At least 8 characters" />
+      </label>
+      <label>New password again
+        <input type="password" id="new-password2" autocomplete="new-password" required minlength="8" />
+      </label>
+      <button type="submit" class="btn btn-primary" id="reset-btn">Set new password</button>
+      <p id="reset-error" class="error" role="alert"></p>
+    </form>
+  </main>
+
+  <!-- No/expired recovery session -->
+  <main id="invalid-view" class="view hidden">
+    <h1>Link expired</h1>
+    <p class="muted">This reset link isn't valid any more — they only work once and
+      don't last long. Request a fresh one from the login page.</p>
+    <p><a href="index.html">← Back to login</a></p>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="reset.js"></script>
+</body>
+</html>

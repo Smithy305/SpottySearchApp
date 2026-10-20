@@ -46,6 +46,9 @@
       <p class="muted center">
         <button type="button" id="auth-toggle" class="link-btn link-inline">New worker? Register here</button>
       </p>
+      <p class="muted center" id="forgot-row">
+        <button type="button" id="forgot-btn" class="link-btn link-inline">Forgot password?</button>
+      </p>
     </form>
   </main>
 
@@ -60,6 +63,10 @@
         <span id="photo-placeholder">📷 Tap to take photo<br /><small>Fill the frame with the pottery</small></span>
         <img id="photo-preview" class="hidden" alt="Pottery preview" />
       </button>
+      <input type="file" id="library-input" accept="image/*" hidden />
+      <p class="muted center library-row">
+        <button type="button" id="library-btn" class="link-btn link-inline">🖼️ Or choose from photo library</button>
+      </p>
 
       <label>Customer name
         <input type="text" id="customer-name" autocomplete="off" autocapitalize="words" required maxlength="80" placeholder="e.g. Sarah W" />
@@ -72,6 +79,11 @@
         <button type="button" class="btn step-btn" id="count-plus" aria-label="More items">+</button>
       </div>
 
+      <label>Notes <span class="optional">(optional — helps search)</span>
+        <textarea id="piece-notes" rows="2" maxlength="500"
+          placeholder="e.g. Birthday present for Nan — glaze the handle too"></textarea>
+      </label>
+
       <button type="submit" class="btn btn-primary" id="save-btn" disabled>Save piece</button>
       <p id="form-msg" role="status"></p>
     </form>
@@ -79,12 +91,14 @@
     <section>
       <h2>Today’s pieces <span id="today-count" class="count-pill"></span></h2>
       <p id="queue-note" class="muted hidden"></p>
+      <p class="muted" id="today-hint">Tap a piece to fix a name or add a note.</p>
       <ul id="today-list" class="piece-list"></ul>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="edit.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
