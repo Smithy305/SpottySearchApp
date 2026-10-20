@@ -22,27 +22,26 @@ Around those sit the things a real shop needed: automatic "your pottery is ready
 ```mermaid
 flowchart LR
     subgraph Staff["Staff phones (PWA)"]
-        L[Log piece<br/>photo + name + notes]
-        S[Search<br/>"blue bowl, turtles"]
+        L["Log piece<br/>photo + name + notes"]
+        S["Search<br/>'blue bowl, turtles'"]
     end
 
     subgraph SB["Supabase"]
-        ST[(Storage<br/>private bucket)]
-        DB[(Postgres + pgvector<br/>RLS per shop)]
+        ST[("Storage<br/>private bucket")]
+        DB[("Postgres + pgvector<br/>RLS per shop")]
         CP[caption-piece]
         SP[search-pieces]
         ES[enrich-square]
         NR[notify-ready]
     end
 
-    L -->|upload, resized client-side| ST
+    L -->|"upload, resized client-side"| ST
     L --> DB
     DB -->|insert webhook| CP
-    CP -->|Claude Haiku caption| CP
-    CP -->|gte-small embedding| DB
-    S --> SP -->|embed query, match_pieces RPC| DB
-    ES -->|nightly: Square payments → contact| DB
-    NR -->|daily: branded email via Resend| C[Customer inbox]
+    CP -->|"caption (Claude Haiku) + embed (gte-small)"| DB
+    S --> SP -->|"embed query, match_pieces RPC"| DB
+    ES -->|"nightly: Square payments to contact"| DB
+    NR -->|"daily: branded email via Resend"| C["Customer inbox"]
 ```
 
 - **Upload:** the PWA resizes the photo to 1280px on the phone, uploads it to a private bucket and inserts a row. It queues in IndexedDB if the shop's signal drops.
